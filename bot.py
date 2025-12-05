@@ -1,157 +1,196 @@
-# bot.py — финальная версия с выбором тестов, правильными ответами и цветной подсветкой
+# bot.py
 import asyncio
-from aiogram import Bot, Dispatcher
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+import os
+import sys
+import psutil
+from datetime import datetime
+
+from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
-from questions import questions  # Первый тест
-from questions2 import questions2  # Второй тест
+# ──────── Импорты проекта ────────
+from questions import questions
+from questions2 import questions2
+from test_logic import init_tests, get_test_keyboard, get_question_keyboard, get_results
+from logger import log_user_action, logger
 
+# ──────── Токен ────────
 BOT_TOKEN = "8397130065:AAGDA4or6syVF_q_qrNkxJwgihrIR-f_oYk"
 
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
-# Список тестов (добавьте новые здесь, импортируя их файлы)
+# ──────── Список тестов ────────
 tests = [
     {"name": "АНГ 25.04 (копия)", "questions": questions},
     {"name": "Сливтер жинағы 24.03.2025", "questions": questions2},
 ]
+init_tests(tests)
 
-user_data = {}
+# Хранилище данных пользователей
+user_data: dict[int, dict] = {}   # uid → {data, user_id, username}
 
-def get_test_keyboard() -> InlineKeyboardMarkup:
-    buttons = []
-    for i, test in enumerate(tests):
-        buttons.append(InlineKeyboardButton(text=test["name"], callback_data=f"start_test_{i}"))
-    rows = [buttons[i:i+1] for i in range(0, len(buttons), 1)]  # По 1 тесту в ряд
-    return InlineKeyboardMarkup(inline_keyboard=rows)
 
-def get_keyboard(test_index: int, q_num: int, highlight: int = None) -> InlineKeyboardMarkup:
-    q_list = tests[test_index]["questions"]
-    buttons = []
-    for i, text in enumerate(q_list[q_num]["opts"]):
-        if not text.strip():
-            continue
-        prefix = ""
-        if highlight is not None:
-            if i == q_list[q_num]["correct"]:
-                prefix = "🟩 "  # зелёный квадрат
-            elif i == highlight:
-                prefix = "🟥 "  # красный квадрат
-        buttons.append(InlineKeyboardButton(
-            text=prefix + text,
-            callback_data=f"ans_{test_index}_{q_num}_{i}" if highlight is None else "ignore"
-        ))
+# ──────── Защита от двойного запуска ────────
+def is_bot_already_running() -> bool:
+    current_pid = os.getpid()
+    current_cmd = " ".join(sys.argv)
+    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+        if proc.info['name'] and 'python' in proc.info['name'].lower():
+            cmd = proc.info['cmdline']
+            if cmd and len(cmd) > 1 and 'bot.py' in " ".join(cmd):
+                if proc.info['pid'] != current_pid:
+                    return True
+    return False
 
-    buttons.append(InlineKeyboardButton(text="Завершить тест", callback_data="finish"))
-    rows = [buttons[i:i+2] for i in range(0, len(buttons)-1, 2)]
-    rows.append([buttons[-1]])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
 
-def get_results(uid: int) -> str:
-    d = user_data[uid]
-    test_index = d["test_index"]
-    q_list = tests[test_index]["questions"]
-    total = len(q_list)
-    percent = d["score"] / total * 100
-
-    text = f"<b>Тест '{tests[test_index]['name']}' завершён!</b>\n\n"
-    text += f"Правильных: <b>{d['score']}</b> из <b>{total}</b> ({percent:.1f}%)\n\n"
-
-    # Правильные ответы
-    corrects = [a for a in d["answers"] if a["chosen"] == a["correct"]]
-    if corrects:
-        text += "<b>Правильные ответы:</b>\n"
-        for c in corrects:
-            qn = c["q"] + 1
-            chosen = q_list[c["q"]]["opts"][c["chosen"]]
-            short_q = q_list[c["q"]]["q"].split("\n", 1)[1][:80] if "\n" in q_list[c["q"]]["q"] else q_list[c["q"]]["q"]
-            text += f"<b>{qn}.</b> {short_q}…\n"
-            text += f"   Вы: 🟩 <b>{chosen}</b>\n\n"
-
-    # Ошибки
-    errors = [a for a in d["answers"] if a["chosen"] != a["correct"]]
-    if errors:
-        text += "<b>Ошибки:</b>\n"
-        for e in errors:
-            qn = e["q"] + 1
-            chosen = q_list[e["q"]]["opts"][e["chosen"]]
-            correct = q_list[e["q"]]["opts"][e["correct"]]
-            short_q = q_list[e["q"]]["q"].split("\n", 1)[1][:80] if "\n" in q_list[e["q"]]["q"] else q_list[e["q"]]["q"]
-            text += f"<b>{qn}.</b> {short_q}…\n"
-            text += f"   Вы: 🟥 {chosen}\n"
-            text += f"   Правильно: 🟩 <b>{correct}</b>\n\n"
-    else:
-        text += "Ошибок нет — вы гений!\n"
-
-    text += "\n/start — выбрать тест заново"
-    return text
-
+# ──────── /start ────────
 @dp.message(Command("start"))
-async def start(message):
+async def start(message: types.Message):
     uid = message.from_user.id
-    user_data[uid] = {"current": 0, "score": 0, "answers": [], "test_index": None}
+    username = message.from_user.username or "NoUsername"
+
+    user_data[uid] = {
+        "data": {"current": 0, "score": 0, "answers": [], "test_index": None},
+        "user_id": uid,
+        "username": username
+    }
+
+    log_user_action(uid, "START_COMMAND", f"Username: @{username}")
     await message.answer("Выберите тест:", reply_markup=get_test_keyboard())
 
-@dp.callback_query(lambda c: c.data.startswith("start_test_"))
-async def start_test(callback):
+
+# ──────── Старт теста ────────
+@dp.callback_query(lambda c: c.data and c.data.startswith("start_test_"))
+async def start_test(callback: types.CallbackQuery):
     uid = callback.from_user.id
     if uid not in user_data:
         return
 
     test_index = int(callback.data.split("_")[-1])
-    user_data[uid] = {"current": 0, "score": 0, "answers": [], "test_index": test_index}
+    user_data[uid]["data"] = {"current": 0, "score": 0, "answers": [], "test_index": test_index}
     q_list = tests[test_index]["questions"]
-    await callback.message.edit_text(f"{tests[test_index]['name']} — 50 вопросов\n\n" + q_list[0]["q"], reply_markup=get_keyboard(test_index, 0))
 
-@dp.callback_query(lambda c: c.data and (c.data.startswith("ans_") or c.data in ["finish", "ignore"]))
-async def process(callback):
+    log_user_action(uid, "TEST_STARTED", f"Test: {tests[test_index]['name']}")
+
+    await callback.message.edit_text(
+        f"{tests[test_index]['name']} — {len(q_list)} вопросов\n\n{q_list[0]['q']}",
+        reply_markup=get_question_keyboard(test_index, 0)
+    )
+
+
+# ──────── Обработка ответа ────────
+@dp.callback_query(
+    lambda c: c.data and (
+        c.data.startswith("ans_") or
+        c.data in ("finish", "ignore")
+    )
+)
+async def process_answer(callback: types.CallbackQuery):
     uid = callback.from_user.id
     if uid not in user_data:
         return
 
+    data = user_data[uid]["data"]
+
+    # ── Завершить тест ──
     if callback.data == "finish":
-        await callback.message.edit_text(get_results(uid), reply_markup=None)
+        await callback.message.edit_text(get_results(user_data[uid]), reply_markup=None)
+        log_user_action(uid, "TEST_FINISHED_EARLY")
         del user_data[uid]
         return
 
+    # ── Игнорировать уже подсвеченные кнопки ──
     if callback.data == "ignore":
         return
 
-    _, test_index_str, q_num_str, choice_str = callback.data.split("_")
-    test_index = int(test_index_str)
-    q_num = int(q_num_str)
-    choice = int(choice_str)
-    q_list = tests[test_index]["questions"]
-    correct = q_list[q_num]["correct"]
+    # ── Проверка повторного ответа на тот же вопрос ──
+    if callback.data.startswith("ans_"):
+        _, test_idx_str, q_num_str, choice_str = callback.data.split("_")
+        q_num = int(q_num_str)
+        choice = int(choice_str)
 
-    user_data[uid]["answers"].append({"q": q_num, "chosen": choice, "correct": correct})
-    if choice == correct:
-        user_data[uid]["score"] += 1
+        # Если уже отвечали – просто выходим
+        if any(a["q"] == q_num for a in data["answers"]):
+            return
 
-    # Подсветка
-    await callback.message.edit_reply_markup(reply_markup=get_keyboard(test_index, q_num, highlight=choice))
+        test_index = int(test_idx_str)
+        q_list = tests[test_index]["questions"]
+        correct = q_list[q_num]["correct"]
 
-    await asyncio.sleep(1.8)
+        # Сохраняем ответ
+        data["answers"].append({"q": q_num, "chosen": choice, "correct": correct})
+        if choice == correct:
+            data["score"] += 1
 
-    user_data[uid]["current"] += 1
-    next_q = user_data[uid]["current"]
-
-    if next_q >= len(q_list):
-        await callback.message.edit_text(get_results(uid), reply_markup=None)
-        del user_data[uid]
-    else:
-        await callback.message.edit_text(
-            q_list[next_q]["q"],
-            reply_markup=get_keyboard(test_index, next_q)
+        log_user_action(
+            uid,
+            "ANSWER",
+            f"Q{q_num + 1}: {'Correct' if choice == correct else 'Wrong'} "
+            f"(выбрано {choice}, правильно {correct})"
         )
 
+        # Подсветка
+        try:
+            await callback.message.edit_reply_markup(
+                reply_markup=get_question_keyboard(test_index, q_num, highlight=choice)
+            )
+        except Exception as e:
+            # TelegramBadRequest: message is not modified → игнорируем
+            if "not modified" not in str(e).lower():
+                logger.exception("Ошибка при edit_reply_markup")
+
+        await asyncio.sleep(1.8)
+
+        # Переход к следующему вопросу
+        data["current"] += 1
+        next_q = data["current"]
+
+        if next_q >= len(q_list):
+            await callback.message.edit_text(get_results(user_data[uid]), reply_markup=None)
+            del user_data[uid]
+        else:
+            await callback.message.edit_text(
+                q_list[next_q]["q"],
+                reply_markup=get_question_keyboard(test_index, next_q)
+            )
+        return
+
+
+# ──────── Статистика (по желанию) ────────
+@dp.message(Command("stats"))
+async def stats(message: types.Message):
+    if not user_data:
+        await message.answer("Нет активных пользователей.")
+        return
+
+    text = "<b>Статистика:</b>\n\n"
+    for uid, entry in user_data.items():
+        d = entry["data"]
+        if d["test_index"] is not None:
+            total = len(tests[d["test_index"]]["questions"])
+            percent = d["score"] / total * 100
+            text += (
+                f"• @{entry['username']} — {d['score']}/{total} "
+                f"({percent:.0f}%)\n"
+            )
+    await message.answer(text)
+
+
+# ──────── Запуск ────────
 async def main():
-    print("Бот запущен — с выбором тестов, правильными ответами и квадратами!")
+    # Защита от двойного запуска
+    if is_bot_already_running():
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] "
+              "ОШИБКА: Бот уже запущен! Завершаю этот экземпляр.")
+        return
+
+    logger.info("Бот запущен — с логированием и модульной логикой!")
     await dp.start_polling(bot)
 
+
 if __name__ == "__main__":
+    # Установите один раз: pip install aiogram psutil
     asyncio.run(main())
