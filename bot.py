@@ -1,4 +1,4 @@
-# bot.py — полностью рабочий, с красивой подсветкой
+# bot.py — 100% рабочий финал с зелёными/красными квадратами
 import asyncio
 from aiogram import Bot, Dispatcher
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -15,6 +15,7 @@ dp = Dispatcher()
 
 user_data = {}
 
+
 def get_keyboard(q_num: int, highlight: int = None) -> InlineKeyboardMarkup:
     buttons = []
     for i, text in enumerate(questions[q_num]["opts"]):
@@ -23,9 +24,9 @@ def get_keyboard(q_num: int, highlight: int = None) -> InlineKeyboardMarkup:
         prefix = ""
         if highlight is not None:
             if i == questions[q_num]["correct"]:
-                prefix = "Правильный ответ "  # зелёный кружок + галочка
+                prefix = "🟩 "   # настоящий зелёный квадрат
             elif i == highlight:
-                prefix = "Неправильный ответ "  # красный кружок + крестик
+                prefix = "🟥 "   # настоящий красный квадрат
         buttons.append(InlineKeyboardButton(
             text=prefix + text,
             callback_data=f"ans_{q_num}_{i}" if highlight is None else "ignore"
@@ -36,15 +37,18 @@ def get_keyboard(q_num: int, highlight: int = None) -> InlineKeyboardMarkup:
     rows.append([buttons[-1]])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
+
 def get_results(uid: int) -> str:
     d = user_data[uid]
     total = len(questions)
     percent = d["score"] / total * 100
 
     text = f"<b>Тест завершён!</b>\n\n"
-    text += f"Правильных ответов: <b>{d['score']}</b> из <b>{total}</b> ({percent:.1f}%)\n\n"
+    text += f"Правильных: <b>{d['score']}</b> из <b>{total}</b> ({percent:.1f}%)\n\n"
 
+    # ИСПРАВЛЕНО: теперь переменная errors определена
     errors = [a for a in d["answers"] if a["chosen"] != a["correct"]]
+
     if errors:
         text += "<b>Ошибки:</b>\n"
         for e in errors:
@@ -53,19 +57,21 @@ def get_results(uid: int) -> str:
             correct = questions[e["q"]]["opts"][e["correct"]]
             short_q = questions[e["q"]]["q"].split("\n", 1)[1][:80]
             text += f"<b>{qn}.</b> {short_q}…\n"
-            text += f"   Вы: Неправильный ответ {chosen}\n"
-            text += f"   Правильно: Правильный ответ <b>{correct}</b>\n\n"
+            text += f"   Вы: 🟥 {chosen}\n"
+            text += f"   Правильно: 🟩 <b>{correct}</b>\n\n"
     else:
-        text += "Ошибок нет — вы молодец!\n"
+        text += "Ошибок нет — вы гений!\n"
 
     text += "\n/start — пройти заново"
     return text
+
 
 @dp.message(Command("start"))
 async def start(message):
     uid = message.from_user.id
     user_data[uid] = {"current": 0, "score": 0, "answers": []}
     await message.answer("АНГ 25.04 — 50 вопросов\n\n" + questions[0]["q"], reply_markup=get_keyboard(0))
+
 
 @dp.callback_query(lambda c: c.data and (c.data.startswith("ans_") or c.data in ["finish", "ignore"]))
 async def process(callback):
@@ -90,10 +96,10 @@ async def process(callback):
     if choice == correct:
         user_data[uid]["score"] += 1
 
-    # Подсветка: показываем галочки/крестики
+    # Подсветка квадратами
     await callback.message.edit_reply_markup(reply_markup=get_keyboard(q_num, highlight=choice))
 
-    await asyncio.sleep(1.7)  # красивая пауза
+    await asyncio.sleep(1.8)
 
     user_data[uid]["current"] += 1
     next_q = user_data[uid]["current"]
@@ -107,9 +113,11 @@ async def process(callback):
             reply_markup=get_keyboard(next_q)
         )
 
+
 async def main():
-    print("Бот с красивой зелёно-красной подсветкой запущен!")
+    print("Бот запущен — зелёные и красные квадраты работают идеально!")
     await dp.start_polling(bot)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
