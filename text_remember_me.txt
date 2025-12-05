@@ -1,0 +1,33 @@
+pip freeze > ./requirements.txt  сохранять список библиотек в файл
+pip uninstall -r ./requirements.txt удалить все библиотеки
+
+uvicorn app.main:a   создает сервер
+uvicorn app.main:app --reload   флажок для пересоздание сервера
+
+pip list (список бибилиотек)
+pip install pip-review (Установите и используйте утилиту pip-review для управления обновлениями:)
+pip-review вывод устаревшиз библиотек
+pip-review --auto установка обновлений
+
+
+python -m venv venv (Только для виртуальной среды)
+venv\Scripts\activate
+pip install fastapi
+pip install uvicorn
+pip install sqlalchemy
+pip install psycopg2-binary
+pip install pydantic[email]   # Pydantic email
+
+docker compose up (для запуска докера)
+
+pgdata надо удалять, прежде чем менять название базы данных
+
+git init
+git add . (all files, but need to one)
+git commit -m 'comment'
+git push
+
+git clone https://fqffqfq
+git pull
+
+
