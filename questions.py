@@ -1,4 +1,5 @@
 # questions.py — полный файл, 50 вопросов, всё точно как в вашем документе
+#АНГ 25.04 (копия)
 questions = [
     {"q": "1 из 50\nThe sentence with similar meaning:\nI am sure you didn’t work hard for your exam.", "opts": ["A) You mustn’t have worked hard for your exam.", "B) You might not have worked hard for your exam.", "C) You couldn’t work hard for your exam.", "D) You can’t have worked hard for your exam."], "correct": 3},
     {"q": "2 из 50\nThe correct preposition:\nYou are expected to arrive at school ___ time.", "opts": ["A) on", "B) for", "C) in", "D) at"], "correct": 0},
